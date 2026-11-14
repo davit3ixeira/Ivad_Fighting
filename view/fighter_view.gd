@@ -15,6 +15,11 @@ const HITSTOP_JITTER := 2.0
 const CHARGE_BASE_RADIUS := 7.0
 const CHARGE_EXTRA_RADIUS := 15.0
 const CHARGE_SPARK_COUNT := 5
+const FORM_SCALE_SPEED := 0.12
+const AURA_JOINTS: Array[String] = ["hips", "chest", "head", "hand_n", "hand_f", "knee_n", "knee_f"]
+const AURA_FLAMES := 7
+const WING_FEATHERS := 5
+const WING_SHADOW := Color(0.05, 0.0, 0.03)
 
 
 enum Part { FAR_LIMBS, TORSO, NEAR_LEG, NEAR_ARM }
@@ -33,6 +38,8 @@ var _clock: int = 0
 var _extras: Array = []
 var _halo: RigLayer
 var _body: RigLayer
+var _flags: Dictionary = {}
+var _form_scale: float = 1.0
 
 
 func setup(target: Fighter, player_color: Color) -> void:
@@ -55,6 +62,8 @@ func bind(target: Fighter) -> void:
 	_blend_left = 0
 	_pose = {}
 	_extras.clear()
+	_form_scale = 1.0
+	_flags = {}
 	for config in _rig.get("extras", []):
 		var extra = _create_extra(config.get("type", ""))
 		if extra == null:
@@ -80,7 +89,9 @@ func sync() -> void:
 		_pose = target
 	joints = _compute_joints(_pose)
 	position = fighter.position
-	scale.x = fighter.facing
+	_flags = fighter.visual_flags()
+	_form_scale = move_toward(_form_scale, float(_flags.get("form_scale", 1.0)), FORM_SCALE_SPEED)
+	scale = Vector2(fighter.facing * _form_scale, _form_scale)
 	visible = not fighter.hidden
 	var stunned := fighter.state == Fighter.State.HITSTUN or fighter.state == Fighter.State.AIR_HITSTUN or fighter.state == Fighter.State.KO
 	if fighter.hitstop > 0 and stunned:
@@ -100,12 +111,14 @@ func _create_extra(extra_type: String) -> RefCounted:
 	match extra_type:
 		"hair_chain":
 			return HairChain.new()
+		"horns":
+			return Horns.new()
 	return null
 
 
 func joint_world(joint: String, offset: Vector2 = Vector2.ZERO) -> Vector2:
 	var local: Vector2 = joints.get(joint, Vector2.ZERO) + offset
-	return position + Vector2(local.x * scale.x, local.y)
+	return position + Vector2(local.x * scale.x, local.y * scale.y)
 
 
 func rig_value(field: String) -> float:
@@ -143,6 +156,10 @@ func draw_halo(canvas: CanvasItem) -> void:
 		return
 	var wide := Color(outline_color, HALO_WIDE_ALPHA)
 	var tight := Color(outline_color, HALO_TIGHT_ALPHA)
+	if _flags.has("aura_color"):
+		_draw_aura(canvas, _flags["aura_color"], float(_flags.get("aura_strength", 1.0)))
+	if _flags.get("wings", false):
+		_draw_wings(canvas, Color(fighter.data.power_color, 0.35), 8.0, true)
 	for extra in _extras:
 		extra.draw(canvas, self, tight, HALO_TIGHT_EXTRA, false)
 	for part in Part.values():
@@ -156,6 +173,9 @@ func draw_body(canvas: CanvasItem) -> void:
 		return
 	var body := tinted(BODY_COLOR)
 	var body_far := tinted(BODY_FAR_COLOR)
+	if _flags.get("wings", false):
+		_draw_wings(canvas, outline_color, OUTLINE_EXTRA_WIDTH, false)
+		_draw_wings(canvas, tinted(WING_SHADOW), 0.0, false)
 	for extra in _extras:
 		extra.draw(canvas, self, outline_color, OUTLINE_EXTRA_WIDTH, false)
 	for extra in _extras:
@@ -244,3 +264,34 @@ func _draw_charge(canvas: CanvasItem) -> void:
 		DrawKit.star(canvas, center + Vector2(cos(angle), sin(angle)) * distance, 3.0 + 4.0 * ratio, Color(1, 1, 1, 0.8), angle)
 	if ratio >= 1.0:
 		DrawKit.ring(canvas, center, 34.0 * pulse, Color(1, 1, 1, 0.7), 2.5)
+
+
+func _draw_aura(canvas: CanvasItem, color: Color, strength: float) -> void:
+	var flicker := 0.75 + 0.25 * sin(_clock * 0.9)
+	for joint in AURA_JOINTS:
+		DrawKit.soft_disc(canvas, joints[joint], 34.0 * flicker, Color(color, 0.32 * strength))
+	var chest: Vector2 = joints["chest"]
+	for index in AURA_FLAMES:
+		var phase := fmod(_clock * 0.035 + float(index) / AURA_FLAMES, 1.0)
+		var sway := sin(_clock * 0.25 + index * 1.9) * 26.0
+		var center := chest + Vector2(sway + (index - AURA_FLAMES * 0.5) * 9.0, 70.0 - phase * 190.0)
+		var size := (1.0 - phase) * 16.0
+		DrawKit.diamond(canvas, center, size * 0.55, size * 1.4, Color(color, 0.6 * strength * (1.0 - phase)))
+		DrawKit.diamond(canvas, center, size * 0.25, size * 0.8, Color(1.0, 0.9, 0.6, 0.5 * strength * (1.0 - phase)))
+
+
+func _draw_wings(canvas: CanvasItem, color: Color, extra: float, is_glow: bool) -> void:
+	var root: Vector2 = joints["chest"] + Vector2(-8, 4)
+	var flap := sin(_clock * 0.16) * 0.14
+	for wing in 2:
+		var spread := 1.0 if wing == 0 else 0.82
+		var paint := color if wing == 0 or is_glow else color.darkened(0.25)
+		for feather in WING_FEATHERS:
+			var t := float(feather) / (WING_FEATHERS - 1)
+			var angle := lerpf(-1.75, -3.25, t) + flap * (1.0 + t) + wing * 0.18
+			var length := lerpf(150.0, 92.0, t) * spread
+			var direction := Vector2(cos(angle), sin(angle))
+			var normal := Vector2(-direction.y, direction.x)
+			var half := 13.0 + extra * 0.5
+			var tip := root + direction * (length + extra)
+			DrawKit.quad(canvas, root + normal * half, root + direction * length * 0.55 + normal * (half + 4.0), tip, root - normal * half, paint)

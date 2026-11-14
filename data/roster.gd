@@ -1,9 +1,11 @@
 class_name Roster
 extends RefCounted
 
+const PROVISIONAL_INDEX := -1
+
 const ENTRIES: Array[Dictionary] = [
 	{"id": "ivad", "name": "Ivad", "title": "Herói cósmico", "ready": true, "power": Color(0.72, 0.5, 1.0)},
-	{"id": "haluho", "name": "Haluho", "title": "Demônio do pacto", "ready": false, "power": Color(1.0, 0.35, 0.12)},
+	{"id": "haluho", "name": "Haluho", "title": "Demônio do pacto", "ready": true, "power": Color(1.0, 0.35, 0.12)},
 	{"id": "god_slayer", "name": "God Slayer", "title": "Caçador de deuses", "ready": false, "power": Color(1.0, 0.62, 0.18)},
 	{"id": "oaoj", "name": "Oãoj", "title": "Deus da destruição", "ready": false, "power": Color(0.3, 1.0, 0.65)},
 	{"id": "keitchoueitchou", "name": "Keitchoueitchou", "title": "Alienígena de luz", "ready": false, "power": Color(0.75, 1.0, 0.35)},
@@ -16,6 +18,8 @@ static func count() -> int:
 
 
 static func display_name(index: int) -> String:
+	if index == PROVISIONAL_INDEX:
+		return "Provisório"
 	return ENTRIES[index]["name"]
 
 
@@ -32,9 +36,13 @@ static func is_ready(index: int) -> bool:
 
 
 static func build(index: int, slot: int) -> CharacterData:
+	if index == PROVISIONAL_INDEX:
+		return GenericData.build(slot)
 	match ENTRIES[clampi(index, 0, ENTRIES.size() - 1)]["id"]:
 		"ivad":
 			return IvadData.build()
+		"haluho":
+			return HaluhoData.build()
 	return GenericData.build(slot)
 
 

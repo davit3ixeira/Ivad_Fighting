@@ -1,7 +1,7 @@
 class_name Fighter
 extends RefCounted
 
-enum State { IDLE, WALK, CROUCH, JUMP, DASH, BACKDASH, ATTACK, BLOCK_STAND, BLOCK_CROUCH, HITSTUN, AIR_HITSTUN, KNOCKDOWN, GETUP, LANDING, KO }
+enum State { IDLE, WALK, CROUCH, JUMP, DASH, BACKDASH, ATTACK, BLOCK_STAND, BLOCK_CROUCH, HITSTUN, AIR_HITSTUN, KNOCKDOWN, GETUP, LANDING, KO, HELD }
 
 const STATE_NAMES := {
 	State.IDLE: "IDLE",
@@ -19,6 +19,7 @@ const STATE_NAMES := {
 	State.GETUP: "GETUP",
 	State.LANDING: "LANDING",
 	State.KO: "KO",
+	State.HELD: "HELD",
 }
 
 const ATTACK_PRIORITY: Array[ButtonMap.Action] = [
@@ -67,6 +68,10 @@ var at_right_wall: bool = false
 var pending_events: Array[Dictionary] = []
 var freeze_request: int = 0
 var cinematic_anim: String = ""
+var held_by: Fighter
+var holding: Fighter
+var hold_offset: Vector2 = Vector2.ZERO
+var armor_hits_left: int = 0
 
 var _events_fired: Dictionary = {}
 var _hold_frame: bool = false
@@ -90,6 +95,9 @@ func setup(character: CharacterData, player_slot: int, start_x: float, start_fac
 	current_move = null
 	input = InputBuffer.new()
 	cinematic_anim = ""
+	held_by = null
+	holding = null
+	armor_hits_left = 0
 	modules.clear()
 	for script in character.module_scripts:
 		var module: FighterModule = script.new()
@@ -102,6 +110,8 @@ func setup(character: CharacterData, player_slot: int, start_x: float, start_fac
 
 func release() -> void:
 	opponent = null
+	held_by = null
+	holding = null
 	modules.clear()
 	pending_events.clear()
 
@@ -145,6 +155,9 @@ func step() -> void:
 				_step_neutral()
 		State.KO:
 			velocity.x = 0.0
+		State.HELD:
+			velocity = Vector2.ZERO
+			push_velocity = Vector2.ZERO
 	_apply_physics()
 	_update_anim()
 	if not _hold_frame:
@@ -241,6 +254,7 @@ func _start_move(move: MoveData) -> void:
 	move_hit_landed = false
 	charge_frames = 0
 	_events_fired.clear()
+	armor_hits_left = move.armor_hits
 	meter = maxi(meter - move.meter_cost, 0)
 	if not airborne:
 		velocity.x = 0.0
@@ -316,7 +330,8 @@ func _step_attack() -> void:
 		_hold_frame = true
 		velocity.x = 0.0
 		return
-	if state_frame > move.advance_start and state_frame <= move.advance_start + move.advance_frames:
+	var stopped := move.stop_on_contact and move_hit_landed
+	if not stopped and state_frame > move.advance_start and state_frame <= move.advance_start + move.advance_frames:
 		velocity.x = facing * move.advance
 	else:
 		velocity.x = 0.0
@@ -454,7 +469,7 @@ func is_invulnerable() -> bool:
 	if hidden:
 		return true
 	match state:
-		State.KNOCKDOWN, State.GETUP, State.KO:
+		State.KNOCKDOWN, State.GETUP, State.KO, State.HELD:
 			return true
 		State.BACKDASH:
 			return state_frame <= data.backdash_invuln_frames
@@ -467,7 +482,7 @@ func is_invulnerable() -> bool:
 
 
 func is_stunned() -> bool:
-	return state == State.HITSTUN or state == State.AIR_HITSTUN or state == State.KNOCKDOWN
+	return state == State.HITSTUN or state == State.AIR_HITSTUN or state == State.KNOCKDOWN or state == State.HELD
 
 
 func can_block(hit: HitInfo) -> bool:
@@ -567,7 +582,7 @@ func pushbox_world() -> Rect2:
 
 
 func has_pushbox() -> bool:
-	return not hidden
+	return not hidden and held_by == null
 
 
 func hurtboxes_world() -> Array[Rect2]:
@@ -688,7 +703,66 @@ func _update_anim() -> void:
 			name = "getup"
 		State.LANDING:
 			name = "landing"
+		State.HELD:
+			name = "held" if data.animations.has("held") else "hit_stand"
 		State.KO:
 			name = "ko" if not airborne else "hit_air"
 	anim_name = name
 	anim_frame = state_frame
+
+
+func can_be_grabbed() -> bool:
+	if airborne or hidden or held_by != null or is_invulnerable():
+		return false
+	match state:
+		State.HITSTUN, State.AIR_HITSTUN, State.BLOCK_STAND, State.BLOCK_CROUCH, State.KNOCKDOWN, State.GETUP, State.KO, State.HELD:
+			return false
+	return true
+
+
+func become_held(holder: Fighter) -> void:
+	_interrupt()
+	held_by = holder
+	airborne = false
+	velocity = Vector2.ZERO
+	push_velocity = Vector2.ZERO
+	_enter_state(State.HELD)
+
+
+func release_from_hold() -> void:
+	held_by = null
+	airborne = position.y < GlobalTuning.FLOOR_Y - 1.0
+
+
+func drop_after_hold() -> void:
+	velocity = Vector2.ZERO
+	if airborne:
+		_enter_state(State.AIR_HITSTUN)
+		return
+	stun_frames = GlobalTuning.HELD_DROP_HITSTUN
+	hit_while_crouching = false
+	_enter_state(State.HITSTUN)
+
+
+func start_followup(move: MoveData) -> void:
+	_start_move(move)
+
+
+func absorbs_hit(hit: HitInfo) -> bool:
+	if hit.ignores_armor:
+		return false
+	if state == State.ATTACK and current_move != null and armor_hits_left > 0:
+		if state_frame >= current_move.armor_start and state_frame <= current_move.armor_end:
+			armor_hits_left -= 1
+			return true
+	for module in modules:
+		if module.absorb_hit(self, hit):
+			return true
+	return false
+
+
+func visual_flags() -> Dictionary:
+	var flags := {}
+	for module in modules:
+		flags.merge(module.visual_flags(self), true)
+	return flags

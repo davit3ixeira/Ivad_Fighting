@@ -9,7 +9,9 @@ const SUPER_DIM_EXTRA_FRAMES := 90
 const SUPER_ZOOM := 1.22
 const SUPER_FOCUS_HEIGHT := -110.0
 const SUPER_BANNER_FRAMES := 80
-const EFFECT_SHAKES := {"supernova": 14.0, "cosmic_ring": 6.0}
+const EFFECT_SHAKES := {"supernova": 14.0, "cosmic_ring": 6.0, "hellfire_burst": 10.0, "true_form": 8.0, "pact": 4.0}
+const ARMOR_COLOR := Color(1.0, 0.95, 0.8)
+const ARMOR_SHAKE := 3.0
 const EFFECT_FLASHES := {"supernova": 0.75}
 const INTRO_FIGHT_FRAME := 130
 const INTRO_SKIP_FRAME := 20
@@ -62,6 +64,7 @@ func _ready() -> void:
 	_hud_layer.add_child(_pause_menu)
 	_sim.hit_landed.connect(_on_hit_landed)
 	_sim.hit_blocked.connect(_on_hit_blocked)
+	_sim.hit_armored.connect(_on_hit_armored)
 	_sim.fight_finished.connect(_on_fight_finished)
 	_sim.entity_spawned.connect(_on_entity_spawned)
 	_sim.entity_removed.connect(_on_entity_removed)
@@ -271,7 +274,7 @@ func _assign_free_slots() -> void:
 
 
 func _cycle_character(slot: int) -> void:
-	_character_indices[slot] = (_character_indices[slot] + 1) % Roster.count()
+	_character_indices[slot] = wrapi(_character_indices[slot] + 1, 0, Roster.count())
 	_start_fight(false)
 
 
@@ -320,6 +323,12 @@ func _on_hit_blocked(attacker: Fighter, _defender: Fighter, _hit: HitInfo, point
 	_bring_to_front(attacker)
 	_spawn_spark(point, BLOCK_SPARK_COLOR, 0.8, true)
 	AudioManager.play_sfx("block")
+
+
+func _on_hit_armored(attacker: Fighter, _defender: Fighter, _hit: HitInfo, point: Vector2, _damage: int) -> void:
+	_bring_to_front(attacker)
+	_on_effect_requested("armor", point, {"color": ARMOR_COLOR})
+	_camera.add_shake(ARMOR_SHAKE)
 
 
 func _on_fight_finished(winner_slot: int) -> void:

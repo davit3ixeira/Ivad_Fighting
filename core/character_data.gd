@@ -63,7 +63,7 @@ func command_moves() -> Array[MoveData]:
 	if _command_moves_ready:
 		return _command_moves
 	for move in moves:
-		if move.kind != MoveData.Kind.NORMAL:
+		if move.kind != MoveData.Kind.NORMAL and not move.followup:
 			_command_moves.append(move)
 	_command_moves.sort_custom(func(a: MoveData, b: MoveData) -> bool: return _command_priority(a) > _command_priority(b))
 	_command_moves_ready = true

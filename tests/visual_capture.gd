@@ -8,6 +8,8 @@ const R1 := ButtonMap.Action.SPECIAL
 const QCF := [[0, 1], [1, 1], [1, 0]]
 const QCB := [[0, 1], [-1, 1], [-1, 0]]
 const DOUBLE_QCF := [[0, 1], [1, 1], [1, 0], [0, 1], [1, 1], [1, 0]]
+const HCB := [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
+const HALUHO_LAST_FRAME := 720
 const FIGHT_SCENE := "res://scenes/fight.tscn"
 const POSES_LAST_FRAME := 560
 const IVAD_LAST_FRAME := 900
@@ -17,7 +19,8 @@ const KO_FRAME_LIMIT := 3000
 const KO_LINGER_FRAMES := 50
 const VICTORY_CAPTURE_FRAME := 175
 const ROSTER_IVAD := 0
-const ROSTER_PROVISIONAL := 1
+const ROSTER_PROVISIONAL := Roster.PROVISIONAL_INDEX
+const ROSTER_HALUHO := 1
 
 var _fight: Node
 var _sim: FightSim
@@ -61,12 +64,15 @@ func _ready() -> void:
 	match _mode:
 		"poses", "ko":
 			_fight.set_characters(ROSTER_PROVISIONAL, ROSTER_PROVISIONAL)
+		"haluho":
+			_fight.set_characters(ROSTER_HALUHO, ROSTER_PROVISIONAL)
 		"ivad":
 			_fight.set_characters(ROSTER_IVAD, ROSTER_PROVISIONAL)
 		_:
 			_fight.set_characters(ROSTER_IVAD, ROSTER_IVAD)
 	_sim.effect_requested.connect(_on_effect_requested)
 	_sim.super_started.connect(_on_super_started)
+	_sim.hit_armored.connect(_on_hit_armored)
 	process_physics_priority = -10
 
 
@@ -87,6 +93,10 @@ func _physics_process(_delta: float) -> void:
 			_step_poses()
 		"ko":
 			_step_ko()
+		"haluho":
+			_fight.set_characters(ROSTER_HALUHO, ROSTER_PROVISIONAL)
+		"haluho":
+			_step_haluho()
 		"ivad":
 			_step_ivad()
 		_:
@@ -157,10 +167,22 @@ func _step_ko() -> void:
 
 
 func _step_perf() -> void:
+	if _frame == 1 and _perf_variant == "haluho":
+		_fight.set_characters(ROSTER_HALUHO, ROSTER_HALUHO)
 	if _frame == 1 and _perf_variant == "generic":
 		_fight.set_characters(ROSTER_PROVISIONAL, ROSTER_PROVISIONAL)
 	for slot in 2:
 		var phase := _frame + slot * 170
+		if _perf_variant == "haluho":
+			if phase % 340 == 0:
+				_queue_motion(slot, QCB, HP)
+			elif phase % 340 == 120:
+				_queue_motion(slot, QCF, HK)
+			elif phase % 340 == 220:
+				_queue_hold(slot, _snap(0, 0, [R1]), 1)
+			elif phase % 510 == 300:
+				_sim.fighters[slot].meter = GlobalTuning.METER_MAX
+				_queue_motion(slot, DOUBLE_QCF, HP)
 		if _perf_variant == "full":
 			if phase % 340 == 0:
 				_queue_motion(slot, QCB, HP)
@@ -278,6 +300,10 @@ func _on_effect_requested(effect_name: String, _position: Vector2, _params: Dict
 
 
 func _on_super_started(_fighter: Fighter, _move: MoveData) -> void:
+	if _mode == "haluho":
+		_scheduled_shots[_frame + 22] = "77_true_form"
+		_scheduled_shots[_frame + 56] = "78_super_hold"
+		_scheduled_shots[_frame + 84] = "79_super_lift"
 	if _mode != "ivad":
 		return
 	_scheduled_shots[_frame + 14] = "40_super_freeze"
@@ -311,3 +337,49 @@ func _finish() -> void:
 		])
 	await get_tree().create_timer(0.3).timeout
 	get_tree().quit()
+
+
+func _step_haluho() -> void:
+	match _frame:
+		12:
+			_capture("70_haluho_idle")
+		20:
+			_queue_motion(0, QCB, LP)
+		90:
+			_queue_motion(0, QCB, HP)
+		160:
+			_queue_hold(0, _snap(1, 0), 24)
+		200:
+			_queue_motion(0, HCB, LP)
+		330:
+			_queue_hold(0, _snap(0, 0, [R1]), 1)
+		400:
+			_queue_hold(0, _snap(-1, 0), 30)
+		440:
+			_queue_motion(0, QCF, LK)
+		540:
+			_sim.fighters[0].meter = GlobalTuning.METER_MAX
+			_queue_motion(0, DOUBLE_QCF, HP)
+		37:
+			_capture("71_whip_l")
+		111:
+			_capture("72_whip_h")
+		226:
+			_capture("73_grab_hold")
+		246:
+			_capture("74_grab_lift")
+		362:
+			_capture("75_pact_aura")
+	if _frame == 25:
+		_fight.get_node("DebugOverlay").set_enabled(true)
+	if _frame == 120:
+		_fight.get_node("DebugOverlay").set_enabled(false)
+	_sim.snapshot_overrides[0] = _next_input(0)
+	_sim.snapshot_overrides[1] = _snap(0, 0, [LP]) if _frame == 452 else _snap(0, 0)
+	if _frame >= HALUHO_LAST_FRAME:
+		_finish()
+
+
+func _on_hit_armored(_attacker: Fighter, _defender: Fighter, _hit: HitInfo, _point: Vector2, _damage: int) -> void:
+	if _mode == "haluho":
+		_scheduled_shots[_frame + 2] = "76_armor"

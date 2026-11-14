@@ -8,12 +8,14 @@ const R1 := ButtonMap.Action.SPECIAL
 const QCF := [[0, 1], [1, 1], [1, 0]]
 const QCB := [[0, 1], [-1, 1], [-1, 0]]
 const DOUBLE_QCF := [[0, 1], [1, 1], [1, 0], [0, 1], [1, 1], [1, 0]]
+const HCB := [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
 
 var _sim: FightSim
 var _failures: int = 0
 var _states_seen: Dictionary = {}
 var _hits: int = 0
 var _blocks: int = 0
+var _armored: int = 0
 
 
 func _ready() -> void:
@@ -21,6 +23,7 @@ func _ready() -> void:
 	add_child(_sim)
 	_sim.hit_landed.connect(func(_a, _d, _m, _p, _dmg): _hits += 1)
 	_sim.hit_blocked.connect(func(_a, _d, _m, _p): _blocks += 1)
+	_sim.hit_armored.connect(func(_a, _d, _m, _p, _dmg): _armored += 1)
 	_run_all()
 	print("SMOKE TEST: %s" % ("OK" if _failures == 0 else "%d FALHAS" % _failures))
 	get_tree().quit(1 if _failures > 0 else 0)
@@ -90,6 +93,11 @@ func _run_all() -> void:
 	_test_ivad_teleport()
 	_test_ivad_super()
 	_test_ivad_cancel_and_clash()
+	_test_haluho_grab()
+	_test_haluho_armor()
+	_test_haluho_whip()
+	_test_haluho_pact()
+	_test_haluho_super()
 
 
 func _test_movement() -> void:
@@ -440,3 +448,108 @@ func _test_ivad_cancel_and_clash() -> void:
 	_expect(_sim.entities.size() == 2, "os dois lancam pocos (%d)" % _sim.entities.size())
 	_advance(120)
 	_expect(_sim.entities.is_empty(), "pocos se anulam no choque")
+
+
+func _fresh_pair(p1_data: CharacterData, p2_data: CharacterData, gap: float) -> void:
+	_sim.setup(p1_data, p2_data)
+	_states_seen.clear()
+	_hits = 0
+	_blocks = 0
+	_armored = 0
+	_sim.fighters[0].position.x = -gap * 0.5
+	_sim.fighters[1].position.x = gap * 0.5
+	_advance(3)
+
+
+func _test_haluho_grab() -> void:
+	print("haluho agarrao")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 100.0)
+	var p1 := _sim.fighters[0]
+	var p2 := _sim.fighters[1]
+	_motion(HCB, LP)
+	_expect(_move_id(0) == "agarrao_l", "meio circulo para tras + soco sai o agarrao (%s)" % _move_id(0))
+	_advance(12)
+	_expect(p2.state == Fighter.State.HELD and _move_id(0) == "agarrao_seq_l", "agarra o oponente parado (%s, %s)" % [p2.state_name(), _move_id(0)])
+	_advance(90)
+	_expect(p2.health < 1000 - 120 and _saw(1, "KNOCKDOWN"), "sequencia causa dano e derruba (vida %d)" % p2.health)
+	_expect(p2.held_by == null and p1.holding == null, "solta no fim")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 100.0)
+	_sim.fighters[0].position.x = 820.0
+	_sim.fighters[1].position.x = 920.0
+	_advance(3, _snap(), _snap(1))
+	_motion(HCB, LP, _snap(1))
+	_advance(12, _snap(), _snap(1))
+	_expect(_saw(1, "HELD"), "agarrao vence quem defende encostado na parede")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 100.0)
+	p2 = _sim.fighters[1]
+	_advance(6, _snap(), _snap(0, -1))
+	_motion(HCB, LP)
+	_advance(40)
+	_expect(not _saw(1, "HELD") and p2.health == 1000, "nao agarra quem esta no ar")
+
+
+func _test_haluho_armor() -> void:
+	print("haluho armadura")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 150.0)
+	var p1 := _sim.fighters[0]
+	var p2 := _sim.fighters[1]
+	var facing := p1.facing
+	_advance(2, _snap(0, 1))
+	_advance(2, _snap(facing, 1))
+	_advance(1, _snap(facing, 0, [LK]), _snap(0, 0, [LP]))
+	_advance(40)
+	_expect(_armored >= 1, "Investida absorve o jab (%d absorcoes)" % _armored)
+	_expect(p2.health < 1000 and p1.health < 1050, "Investida acerta mesmo apanhando (vidas %d e %d)" % [p1.health, p2.health])
+
+
+func _test_haluho_whip() -> void:
+	print("haluho chicote")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 250.0)
+	var p2 := _sim.fighters[1]
+	_motion(QCB, LP)
+	_advance(30)
+	_expect(p2.health < 1000, "chicote fraco alcanca de longe (vida %d)" % p2.health)
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 250.0)
+	p2 = _sim.fighters[1]
+	_motion(QCB, LP, _snap(0, 1))
+	_advance(30, _snap(), _snap(0, 1))
+	_expect(p2.health < 1000, "chicote fraco pega quem esta agachado na ponta (vida %d)" % p2.health)
+
+
+func _test_haluho_pact() -> void:
+	print("haluho pacto")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 100.0)
+	var p1 := _sim.fighters[0]
+	var p2 := _sim.fighters[1]
+	_advance(1, _snap(0, 0, [R1]))
+	_advance(40)
+	_expect(p1.health == 1050 - 90, "Pacto custa vida (vida %d)" % p1.health)
+	_expect(not p1.hud_gauges().is_empty() and p1.hud_gauges()[0]["active"], "medidor de Pacto ativo")
+	_advance(1, _snap(0, 0, [LP]))
+	_advance(20)
+	_expect(p2.health < 1000 - 45, "golpes ficam mais fortes (vida %d)" % p2.health)
+	_advance(1, _snap(0, 0, [R1]))
+	_advance(30)
+	_expect(p1.health == 1050 - 90, "nao renova o Pacto enquanto ativo")
+
+
+func _test_haluho_super() -> void:
+	print("haluho supremo")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 200.0)
+	var p1 := _sim.fighters[0]
+	var p2 := _sim.fighters[1]
+	p1.meter = GlobalTuning.METER_MAX
+	_motion(DOUBLE_QCF, HP)
+	_expect(_move_id(0) == "super", "Forma Verdadeira sai (%s)" % _move_id(0))
+	_advance(80)
+	_expect(_saw(1, "HELD"), "investida agarra e inicia a sequencia")
+	_advance(140)
+	_expect(p2.health == 1000 - 40 - 4 * 40 - 160, "sequencia completa (vida %d)" % p2.health)
+	_expect(p1.state == Fighter.State.IDLE and p1.holding == null, "volta ao normal")
+	_fresh_pair(HaluhoData.build(), GenericData.build(1), 200.0)
+	p1 = _sim.fighters[0]
+	p2 = _sim.fighters[1]
+	p1.meter = GlobalTuning.METER_MAX
+	_motion(DOUBLE_QCF, HP, _snap(1))
+	_advance(140, _snap(), _snap(1))
+	_expect(not _saw(1, "HELD") and p2.health == 1000 - 25, "defendido so causa raspao (vida %d)" % p2.health)

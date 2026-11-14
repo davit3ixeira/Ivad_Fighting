@@ -3,6 +3,7 @@ extends Node
 
 signal hit_landed(attacker: Fighter, defender: Fighter, hit: HitInfo, point: Vector2, damage: int)
 signal hit_blocked(attacker: Fighter, defender: Fighter, hit: HitInfo, point: Vector2)
+signal hit_armored(attacker: Fighter, defender: Fighter, hit: HitInfo, point: Vector2, damage: int)
 signal fight_finished(winner_slot: int)
 signal entity_spawned(entity: Entity)
 signal entity_removed(entity: Entity, reason: String)
@@ -71,6 +72,7 @@ func step() -> void:
 		for module in fighter.modules:
 			module.on_frame(fighter, self)
 	_process_fighter_events()
+	_update_holds()
 	_step_entities()
 	_separate_pushboxes()
 	_update_facing()
@@ -184,6 +186,10 @@ func _process_event(fighter: Fighter, event: Dictionary) -> void:
 			request_effect(event["effect"], fighter.position + world_offset, {"facing": fighter.facing, "color": fighter.data.power_color})
 		"sfx":
 			request_sfx(event["sfx"])
+		"hold_offset":
+			fighter.hold_offset = event["offset"]
+		"held_hit":
+			_apply_held_hit(fighter, event)
 		"module":
 			for module in fighter.modules:
 				module.on_move_event(fighter, self, event)
@@ -274,17 +280,30 @@ func _resolve_fighter_hits() -> void:
 			var rects := attacker.window_hitboxes_world(index)
 			if _window_hits_entities(attacker, index, rects):
 				continue
+			var move := attacker.current_move
+			if move.grab and not defender.can_be_grabbed():
+				continue
 			var point: Variant = _first_overlap(rects, defender.hurtboxes_world())
 			if point == null:
 				continue
 			contacts.append({
-				"attacker": attacker, "defender": defender, "point": point,
+				"attacker": attacker, "defender": defender, "point": point, "move": move,
 				"hit": attacker.build_hit(index), "direction": attacker.facing,
 			})
 			attacker.windows_hit[index] = true
 			attacker.move_hit_landed = true
 	for contact in contacts:
-		_apply_hit(contact["attacker"], contact["defender"], contact["hit"], contact["point"], contact["direction"], contact["attacker"])
+		var attacker: Fighter = contact["attacker"]
+		var defender: Fighter = contact["defender"]
+		var move: MoveData = contact["move"]
+		if attacker.held_by != null or attacker.current_move != move:
+			continue
+		if move.grab:
+			_apply_grab(attacker, defender, move, contact["point"])
+			continue
+		var blocked := _apply_hit(attacker, defender, contact["hit"], contact["point"], contact["direction"], attacker)
+		if not blocked and move.link_on_hit != "" and defender.is_stunned():
+			_link(attacker, defender, move)
 
 
 func _window_hits_entities(attacker: Fighter, window_index: int, rects: Array[Rect2]) -> bool:
@@ -369,6 +388,9 @@ func _apply_hit(owner: Fighter, defender: Fighter, hit: HitInfo, point: Vector2,
 		hit_blocked.emit(owner, defender, hit, point)
 		return true
 	var damage := _scaled_damage(hit.damage, defender.combo_scale_hits)
+	if damage < defender.health and defender.absorbs_hit(hit):
+		_apply_armored_hit(owner, defender, hit, point, damage, melee_attacker)
+		return false
 	var hitstun := _scaled_hitstun(hit.hitstun, defender.combo_hits)
 	defender.take_hit(hit, direction, damage, hitstun)
 	owner.gain_meter(hit.meter_gain)
@@ -434,3 +456,96 @@ func _release_fighters() -> void:
 func _exit_tree() -> void:
 	_clear_entities()
 	_release_fighters()
+
+
+func _apply_grab(attacker: Fighter, defender: Fighter, move: MoveData, point: Vector2) -> void:
+	attacker.apply_hitstop(GlobalTuning.GRAB_HITSTOP)
+	defender.apply_hitstop(GlobalTuning.GRAB_HITSTOP)
+	request_effect("grab", point, {"facing": attacker.facing, "color": attacker.data.power_color})
+	request_sfx("grab")
+	_link(attacker, defender, move)
+
+
+func _link(attacker: Fighter, defender: Fighter, move: MoveData) -> void:
+	var followup := attacker.data.move_by_id(move.link_on_hit)
+	if followup == null:
+		return
+	attacker.start_followup(followup)
+	if not move.hold_on_link:
+		return
+	attacker.holding = defender
+	attacker.hold_offset = followup.hold_offset
+	defender.become_held(attacker)
+	_update_holds()
+
+
+func _update_holds() -> void:
+	for holder in fighters:
+		var target := holder.holding
+		if target == null:
+			continue
+		var holding_move := holder.state == Fighter.State.ATTACK and holder.current_move != null and holder.current_move.holds_target
+		if not holding_move or holder.state == Fighter.State.KO:
+			_release_hold(holder)
+			continue
+		target.position = holder.position + Vector2(holder.hold_offset.x * holder.facing, holder.hold_offset.y)
+		target.facing = -holder.facing
+		target.clamp_to_stage()
+
+
+func _release_hold(holder: Fighter) -> void:
+	var target := holder.holding
+	holder.holding = null
+	if target == null:
+		return
+	target.release_from_hold()
+	if target.state == Fighter.State.HELD:
+		target.drop_after_hold()
+
+
+func _apply_held_hit(holder: Fighter, event: Dictionary) -> void:
+	var target := holder.holding
+	if target == null or holder.current_move == null:
+		return
+	var hit := HitInfo.from_fields(holder.current_move.id, event.get("hit", {}))
+	hit.unblockable = true
+	hit.ignores_armor = true
+	for module in holder.modules:
+		module.modify_hit(holder, hit)
+	var point := target.position + Vector2(0, GlobalTuning.HELD_HIT_HEIGHT)
+	var damage := _scaled_damage(hit.damage, target.combo_scale_hits)
+	if event.get("release", false) or damage >= target.health:
+		holder.holding = null
+		target.release_from_hold()
+		_apply_hit(holder, target, hit, point, holder.facing, holder)
+		if target.state == Fighter.State.HELD:
+			target.drop_after_hold()
+		return
+	target.health -= damage
+	target.combo_hits += 1
+	if hit.scales_combo:
+		target.combo_scale_hits += 1
+	target.gain_meter(int(damage * GlobalTuning.METER_GAIN_ON_DAMAGE_TAKEN))
+	holder.gain_meter(hit.meter_gain)
+	holder.apply_hitstop(hit.hitstop)
+	target.apply_hitstop(hit.hitstop)
+	for module in target.modules:
+		module.on_damage_taken(target, hit, damage)
+	for module in holder.modules:
+		module.on_hit_dealt(holder, target, hit, false, self)
+	if hit.effect != "":
+		request_effect(hit.effect, point, {"facing": holder.facing, "color": holder.data.power_color})
+	hit_landed.emit(holder, target, hit, point, damage)
+
+
+func _apply_armored_hit(owner: Fighter, defender: Fighter, hit: HitInfo, point: Vector2, damage: int, melee_attacker: Fighter) -> void:
+	defender.health -= damage
+	defender.gain_meter(int(damage * GlobalTuning.METER_GAIN_ON_DAMAGE_TAKEN))
+	owner.gain_meter(hit.meter_gain)
+	var stop := maxi(hit.hitstop - GlobalTuning.ARMOR_HITSTOP_REDUCTION, 2)
+	defender.apply_hitstop(stop)
+	if melee_attacker != null:
+		melee_attacker.apply_hitstop(stop)
+	for module in defender.modules:
+		module.on_damage_taken(defender, hit, damage)
+	hit_armored.emit(owner, defender, hit, point, damage)

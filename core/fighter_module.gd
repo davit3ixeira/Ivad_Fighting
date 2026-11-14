@@ -44,3 +44,11 @@ func on_interrupted(_fighter: Fighter) -> void:
 
 func hud_gauges(_fighter: Fighter) -> Array[Dictionary]:
 	return []
+
+
+func absorb_hit(_fighter: Fighter, _hit: HitInfo) -> bool:
+	return false
+
+
+func visual_flags(_fighter: Fighter) -> Dictionary:
+	return {}
