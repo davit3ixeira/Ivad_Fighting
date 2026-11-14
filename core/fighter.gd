@@ -66,6 +66,7 @@ var at_left_wall: bool = false
 var at_right_wall: bool = false
 var pending_events: Array[Dictionary] = []
 var freeze_request: int = 0
+var cinematic_anim: String = ""
 
 var _events_fired: Dictionary = {}
 var _hold_frame: bool = false
@@ -88,6 +89,7 @@ func setup(character: CharacterData, player_slot: int, start_x: float, start_fac
 	hitstop = 0
 	current_move = null
 	input = InputBuffer.new()
+	cinematic_anim = ""
 	modules.clear()
 	for script in character.module_scripts:
 		var module: FighterModule = script.new()
@@ -634,6 +636,16 @@ func to_world(rect: Rect2) -> Rect2:
 	return Rect2(position.x + flipped_x, position.y + rect.position.y, rect.size.x, rect.size.y)
 
 
+func play_cinematic(anim: String) -> void:
+	cinematic_anim = anim
+	if state == State.IDLE:
+		state_frame = 0
+
+
+func clear_cinematic() -> void:
+	cinematic_anim = ""
+
+
 func state_name() -> String:
 	return STATE_NAMES.get(state, "?")
 
@@ -649,7 +661,7 @@ func _update_anim() -> void:
 	var name := "idle"
 	match state:
 		State.IDLE:
-			name = "idle"
+			name = cinematic_anim if cinematic_anim != "" and data.animations.has(cinematic_anim) else "idle"
 		State.WALK:
 			name = "walk_forward" if velocity.x * facing > 0 else "walk_back"
 		State.CROUCH:

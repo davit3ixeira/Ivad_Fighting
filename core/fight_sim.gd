@@ -30,6 +30,7 @@ var winner_slot: int = -1
 var dummy_mode: DummyMode = DummyMode.OFF
 var last_snapshots: Array[InputSnapshot] = [InputSnapshot.new(), InputSnapshot.new()]
 var snapshot_overrides: Array = [null, null]
+var inputs_enabled: bool = true
 
 
 func setup(p1_data: CharacterData, p2_data: CharacterData) -> void:
@@ -82,6 +83,8 @@ func step() -> void:
 
 
 func _snapshot_for(fighter: Fighter) -> InputSnapshot:
+	if not inputs_enabled:
+		return InputSnapshot.new()
 	if snapshot_overrides[fighter.slot] != null:
 		return snapshot_overrides[fighter.slot]
 	if fighter.slot == 1 and dummy_mode != DummyMode.OFF:
@@ -411,12 +414,15 @@ func _collect_freeze_requests() -> void:
 func _check_ko() -> void:
 	if finished:
 		return
+	var knocked_out: Array[Fighter] = []
 	for fighter in fighters:
 		if fighter.state == Fighter.State.KO:
-			finished = true
-			winner_slot = fighter.opponent.slot
-			fight_finished.emit(winner_slot)
-			return
+			knocked_out.append(fighter)
+	if knocked_out.is_empty():
+		return
+	finished = true
+	winner_slot = -1 if knocked_out.size() == fighters.size() else knocked_out[0].opponent.slot
+	fight_finished.emit(winner_slot)
 
 
 func _release_fighters() -> void:

@@ -25,10 +25,12 @@ G="C:/Users/dtmal/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_wi
 "$G" --path . res://tests/visual_capture.tscn -- "<pasta>" ko                 # PNGs do KO
 "$G" --path . res://tests/visual_capture.tscn -- "<pasta>" perf full          # fps e custo (variantes: generic, idle, brawl, full)
 "$G" --path .                                                                 # roda normal para o usuário testar
+"$G" --path . res://tests/flow_test.tscn -- "<pasta>"                        # percorre o jogo inteiro com teclado simulado, salva PNGs e imprime FLOW: OK
+"$G" --path . res://scenes/fight.tscn                                         # abre direto na luta (Ivad x Ivad), sem passar pelos menus
 "$G" --path . res://scenes/controller_test.tscn                               # tela de teste de controles
 ```
 
-Antes de entregar: import, smoke test, captura visual (ler os PNGs) e perf. Nunca dizer que funciona sem ter rodado.
+Antes de entregar: import, smoke test, flow test, captura visual (ler os PNGs) e perf. Nunca dizer que funciona sem ter rodado.
 
 ## Regras do projeto
 
@@ -40,7 +42,7 @@ Antes de entregar: import, smoke test, captura visual (ler os PNGs) e perf. Nunc
 - Habilidades únicas são módulos (`FighterModule`) e comportamentos (`EntityBehavior`) por composição. Nada de `if` por personagem no núcleo.
 - Áudio: `AudioManager.play_sfx(nome)` já posicionado nos eventos; não faz nada se não existe `audio/sfx/<nome>.wav|ogg`. Bipes de teste atrás de `AudioManager.test_beeps_enabled`.
 - Git: commit ao fim de cada marco e antes de refatorações grandes, mensagem curta em português. Sem push sem pedido.
-- Debug: F1 caixas e frame data. F2 boneco de treino no P2. F3 modo do boneco. F4 reinicia. F5 troca personagem do P1. F6 troca personagem do P2. F7 enche as barras de poder. F11 tela cheia.
+- Debug (só na luta): F1 caixas e frame data. F2 boneco de treino no P2. F3 modo do boneco. F4 reinicia sem introdução. F5 troca personagem do P1. F6 troca personagem do P2. F7 enche as barras de poder. F11 tela cheia.
 - Entregas por marcos jogáveis; parar ao fim de cada um para o usuário testar. Falar em português, curto e direto.
 
 ## Desempenho (regra medida, não opinião)
@@ -88,7 +90,8 @@ Antes de entregar: import, smoke test, captura visual (ler os PNGs) e perf. Nunc
 - Mapeamento de botões e teclas de debug em um único arquivo: `input/button_map.gd`.
 - Teclado lido por tecla física, não pelo Input Map do projeto.
 - Pseudo-devices: `-2` teclado WASD, `-3` teclado Setas, `-1` nenhum.
-- Steam Input pode duplicar controles: `poll_join_press` ignora um segundo device que repita o mesmo estado dentro de 10 frames.
+- Steam Input pode duplicar controles. `poll_join_press` só deixa entrar um controle cujo aperto não coincide com o de outro controle (mesmo estado em até 10 frames) e espera 10 frames antes de confirmar a entrada. Depois de 3 coincidências seguidas o device vira espelho e nunca entra. Um aperto independente zera a suspeita, então dois jogadores reais apertando juntos só atrasam a entrada. Teclado entra na hora.
+- Menus: X ou □ confirma, ○ volta, Options pausa (teclado P1: K/J, I, Esc; P2: Num2/Num1, Num5, Esc). Definido em `ButtonMap.MENU_CONFIRM` e `MENU_BACK`. `MenuInput` lê por slot com repetição ao segurar a direção; a primeira leitura depois de trocar de cena ou de device nunca gera aperto.
 - Controle PS5: □ soco fraco, △ soco forte, X chute fraco, ○ chute forte, R1 habilidade, Options pausa.
 - Teclado P1: WASD, J U K I, L habilidade, Esc pausa. Teclado P2: setas, Numpad 1 4 2 5, Numpad 3 habilidade, Esc pausa.
 
@@ -110,7 +113,15 @@ Antes de entregar: import, smoke test, captura visual (ler os PNGs) e perf. Nunc
 
 ## Mapa dos arquivos
 
-- `project.godot`: renderer Compatibility, 1280x720, autoloads `InputRouter` e `AudioManager`, cena principal `scenes/fight.tscn`.
+- `project.godot`: renderer Compatibility, 1280x720, autoloads `InputRouter`, `AudioManager` e `GameFlow`, cena principal `scenes/press_start.tscn`.
+- `flow/game_flow.gd` (autoload): seleção atual e troca de cena com fade.
+- `data/roster.gd`: os 6 lutadores (nome, título, cor de poder, pronto ou não) e quem constrói cada um.
+- `data/stage_list.gd`: os 3 mapas (nome, descrição, cores).
+- `scenes/press_start.*`, `scenes/main_menu.*`, `scenes/character_select.*`, `scenes/stage_select.*`: telas do fluxo.
+- `ui/menu_input.gd`: leitura de menu por slot (navegação com repetição, confirmar, voltar, pausa) e entrada de novos jogadores.
+- `ui/ui_kit.gd`, `ui/menu_backdrop.gd`, `ui/stage_preview.gd`: cores, texto neon, painéis, fundo animado dos menus e miniaturas dos mapas.
+- `ui/intro_overlay.gd`, `ui/menu_overlay.gd`: introdução com nomes, falas e "LUTAR!"; menus de pausa e vitória.
+- `tests/flow_test.*`, `tests/flow_runner.gd`: teste de ponta a ponta do fluxo.
 - `input/button_map.gd`, `input/input_snapshot.gd`, `input/input_router.gd` (autoload): mapeamento, snapshot por frame, devices e slots.
 - `audio/audio_manager.gd` (autoload): `play_sfx`, pool de players, bipes de teste.
 - `core/global_tuning.gd`: constantes globais.
@@ -123,7 +134,7 @@ Antes de entregar: import, smoke test, captura visual (ler os PNGs) e perf. Nunc
 - `core/fight_sim.gd`: passo da luta, entidades, contatos, choques, congelamento, KO, boneco de treino, sinais para a view.
 - `core/fight_camera.gd`: câmera com zoom por distância, limites, tremor e foco dramático.
 - `data/data_kit.gd`: construtores de golpe, entidade, pose e animação.
-- `data/roster.gd`: lista de personagens disponíveis.
+
 - `data/characters/generic/`: dados e animações do genérico.
 - `data/characters/ivad/ivad_data.gd`: todos os números do Ivad (atributos, golpes, entidades, parâmetros do módulo).
 - `data/characters/ivad/ivad_anims.gd`: rig, cabelo e animações do Ivad.
@@ -150,17 +161,29 @@ Antes de entregar: import, smoke test, captura visual (ler os PNGs) e perf. Nunc
 5. Entrada no `data/roster.gd`.
 6. Testes no `sim_smoke_test.gd` e modo de captura no `visual_capture.gd`.
 
-## Arquitetura planejada para os próximos marcos
+## Fluxo do jogo
 
-- `GameFlow` (autoload): entrada → menu → seleção de personagem → seleção de mapa → luta → vitória. Pausa com Options.
-- Introdução com falas (`intro_line`, `win_line`) e "LUTAR!".
+- `GameFlow` (autoload) guarda `characters` (índices do `Roster`) e `stage`, e troca de cena com fade (`go_to`). Telas não aceitam entrada enquanto `is_transitioning()`.
+- Aperte um botão (`press_start`): limpa os slots; o primeiro device a apertar vira P1, o segundo P2. Com os dois dentro avança sozinho; só com P1, o P1 confirma.
+- Menu principal: Jogar e Sair. Voltar retorna à tela inicial.
+- Seleção de personagem: grade 3x2 com os 6 lutadores, cursor por jogador, silhueta animada ao lado (pose de vitória ao confirmar). Personagens ainda não feitos aparecem como EM BREVE e usam o lutador provisório. Voltar destrava; sem trava volta ao menu. P2 pode entrar aqui apertando qualquer botão.
+- Seleção de mapa: cursor compartilhado, qualquer jogador navega e confirma. Voltar retorna à seleção de personagem.
+- Luta (`scenes/fight.gd`): fases INTRO, FIGHT, KO, VICTORY. Na introdução as entradas ficam travadas (`FightSim.inputs_enabled`), os lutadores tocam a animação `intro` (`Fighter.play_cinematic`) e as falas vêm de `intro_line_against`. Confirmar pula a introdução. "LUTAR!" libera o controle.
+- KO: entradas travadas, o vencedor toca `win` e a tela de vitória abre com a fala de `win_line_against`. KO duplo vira empate.
+- Vitória: Revanche (mesmos personagens e mapa, com introdução) ou Voltar à seleção de personagem.
+- Pausa: Options na fase FIGHT. Continuar, Voltar ao menu. ○ ou Options também fecham.
+- Falas especiais por oponente em `CharacterData.intro_lines_vs` e `win_lines_vs` (chave = id do oponente). Ivad já tem falas para Oãoj (irmão) e para o espelho.
+
+## Próximo passo
+
+- M4: Haluho, God Slayer, Oãoj, Keitchoueitchou e Xing Zhang, um por vez. Ao terminar cada um, marcar `"ready": true` no `Roster` e ligar o `build` dele.
 
 ## Marcos
 
 - [x] M0 preparação: projeto, input, tela de teste de controles.
 - [x] M1 base de luta: dois lutadores genéricos, movimento, 12 normais, defesa, hit, KO, câmera, HUD, F1/F2.
 - [x] M2 sistema de golpes em dados, comandos, módulos, projéteis e invocações, barra de poder e Ivad completo. Medido: 60,0 fps com dois Ivads.
-- [ ] M3 fluxo completo: entrada, menu, seleções, luta, vitória, pausa.
+- [x] M3 fluxo completo: entrada dos jogadores, menu, seleção de personagem e de mapa, introdução, luta, vitória com revanche e pausa. Medido: 60,0 fps.
 - [ ] M4 Haluho, God Slayer, Oãoj, Keitchoueitchou, Xing Zhang.
 - [ ] M5 três mapas.
 - [ ] M6 polimento e otimização.

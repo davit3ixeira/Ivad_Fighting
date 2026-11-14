@@ -66,6 +66,9 @@ const KEY_CYCLE_P1_CHARACTER := KEY_F5
 const KEY_CYCLE_P2_CHARACTER := KEY_F6
 const KEY_FILL_METER := KEY_F7
 
+const MENU_CONFIRM: Array[Action] = [Action.LIGHT_KICK, Action.LIGHT_PUNCH]
+const MENU_BACK: Array[Action] = [Action.HEAVY_KICK]
+
 const DEFAULT_DEADZONE := 0.45
 const PREFER_DIGITAL_DPAD := true
 

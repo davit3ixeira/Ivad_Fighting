@@ -17,6 +17,8 @@ static func build(variant: int = 0) -> CharacterData:
 	var c := CharacterData.new()
 	c.id = "generic"
 	c.display_name = "Sombra" if variant == 0 else "Eco"
+	c.intro_line = "Sou só um rascunho. Pega leve."
+	c.win_line = "Nada mal para um rascunho."
 	c.health = 1000
 	c.walk_speed = 5.5
 	c.back_speed = 4.5

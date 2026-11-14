@@ -38,6 +38,8 @@ var animations: Dictionary = {}
 var intro_line: String = ""
 var win_line: String = ""
 var params: Dictionary = {}
+var intro_lines_vs: Dictionary = {}
+var win_lines_vs: Dictionary = {}
 
 var _command_moves: Array[MoveData] = []
 var _command_moves_ready: bool = false
@@ -70,3 +72,11 @@ func command_moves() -> Array[MoveData]:
 
 func _command_priority(move: MoveData) -> int:
 	return KIND_PRIORITY[move.kind] + CommandParser.priority(move.motion)
+
+
+func intro_line_against(opponent_id: String) -> String:
+	return intro_lines_vs.get(opponent_id, intro_line)
+
+
+func win_line_against(opponent_id: String) -> String:
+	return win_lines_vs.get(opponent_id, win_line)

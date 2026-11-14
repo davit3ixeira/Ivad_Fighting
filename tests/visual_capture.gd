@@ -15,9 +15,9 @@ const PERF_LAST_FRAME := 1200
 const PERF_WARMUP_FRAMES := 120
 const KO_FRAME_LIMIT := 3000
 const KO_LINGER_FRAMES := 50
+const VICTORY_CAPTURE_FRAME := 175
 const ROSTER_IVAD := 0
-const ROSTER_SOMBRA := 1
-const ROSTER_ECO := 2
+const ROSTER_PROVISIONAL := 1
 
 var _fight: Node
 var _sim: FightSim
@@ -55,13 +55,14 @@ func _ready() -> void:
 		_mode = args[1]
 	DirAccess.make_dir_recursive_absolute(_output_dir)
 	_fight = load(FIGHT_SCENE).instantiate()
+	_fight.play_intro = false
 	add_child(_fight)
 	_sim = _fight.get_node("Sim")
 	match _mode:
 		"poses", "ko":
-			_fight.set_characters(ROSTER_SOMBRA, ROSTER_ECO)
+			_fight.set_characters(ROSTER_PROVISIONAL, ROSTER_PROVISIONAL)
 		"ivad":
-			_fight.set_characters(ROSTER_IVAD, ROSTER_SOMBRA)
+			_fight.set_characters(ROSTER_IVAD, ROSTER_PROVISIONAL)
 		_:
 			_fight.set_characters(ROSTER_IVAD, ROSTER_IVAD)
 	_sim.effect_requested.connect(_on_effect_requested)
@@ -149,13 +150,15 @@ func _step_ko() -> void:
 		_capture("20_ko_hit")
 	if _ko_frame >= 0 and _frame == _ko_frame + KO_LINGER_FRAMES:
 		_capture("21_ko_screen")
-	if (_ko_frame >= 0 and _frame >= _ko_frame + KO_LINGER_FRAMES + 5) or _frame >= KO_FRAME_LIMIT:
+	if _ko_frame >= 0 and _frame == _ko_frame + VICTORY_CAPTURE_FRAME:
+		_capture("22_victory")
+	if (_ko_frame >= 0 and _frame >= _ko_frame + VICTORY_CAPTURE_FRAME + 5) or _frame >= KO_FRAME_LIMIT:
 		_finish()
 
 
 func _step_perf() -> void:
 	if _frame == 1 and _perf_variant == "generic":
-		_fight.set_characters(ROSTER_SOMBRA, ROSTER_ECO)
+		_fight.set_characters(ROSTER_PROVISIONAL, ROSTER_PROVISIONAL)
 	for slot in 2:
 		var phase := _frame + slot * 170
 		if _perf_variant == "full":
@@ -173,7 +176,7 @@ func _step_perf() -> void:
 		else:
 			_sim.snapshot_overrides[slot] = _next_input(slot)
 	if _sim.finished:
-		_fight._start_fight()
+		_fight._start_fight(false)
 	if _frame >= PERF_LAST_FRAME:
 		_finish()
 

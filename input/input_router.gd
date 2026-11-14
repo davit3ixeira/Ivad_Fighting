@@ -12,6 +12,7 @@ const DEVICE_KEYBOARD_P1 := -2
 const DEVICE_KEYBOARD_P2 := -3
 
 const JOIN_DUPLICATE_WINDOW_FRAMES := 10
+const MIRROR_CONFIRMATIONS := 3
 
 var deadzone: float = ButtonMap.DEFAULT_DEADZONE
 var prefer_digital_dpad: bool = ButtonMap.PREFER_DIGITAL_DPAD
@@ -20,9 +21,11 @@ var slot_devices: Array[int] = [DEVICE_NONE, DEVICE_NONE]
 
 var _previous_by_device: Dictionary = {}
 var _frame: int = 0
-var _last_join_device: int = DEVICE_NONE
-var _last_join_frame: int = -1000
-var _last_join_snapshot: InputSnapshot = InputSnapshot.new()
+var _recent_presses: Dictionary = {}
+var _coincidences: Dictionary = {}
+var _mirror_devices: Dictionary = {}
+var _pending_join: int = DEVICE_NONE
+var _pending_frame: int = 0
 
 
 func _ready() -> void:
@@ -39,6 +42,11 @@ func _on_joy_connection_changed(device: int, connected: bool) -> void:
 		device_connected.emit(device)
 		return
 	_previous_by_device.erase(device)
+	_recent_presses.erase(device)
+	_coincidences.erase(device)
+	_mirror_devices.erase(device)
+	if _pending_join == device:
+		_pending_join = DEVICE_NONE
 	for slot in SLOT_COUNT:
 		if slot_devices[slot] == device:
 			slot_devices[slot] = DEVICE_NONE
@@ -148,32 +156,65 @@ func _digitize(value: float) -> int:
 
 
 func poll_join_press() -> int:
-	var joined := DEVICE_NONE
 	for device in all_devices():
 		var current := read_device(device)
 		var previous: InputSnapshot = _previous_by_device.get(device, InputSnapshot.new())
-		var new_buttons := current.buttons & ~previous.buttons
 		_previous_by_device[device] = current
-		if new_buttons == 0 or joined != DEVICE_NONE:
+		if (current.buttons & ~previous.buttons) == 0:
 			continue
-		if _is_duplicate_join(device, current):
+		var suspected := _register_press(device, current)
+		if suspected or slot_of_device(device) != -1 or _mirror_devices.has(device):
 			continue
-		joined = device
-		_last_join_device = device
-		_last_join_frame = _frame
-		_last_join_snapshot = current.duplicate_snapshot()
-	return joined
+		if _pending_join == DEVICE_NONE:
+			_pending_join = device
+			_pending_frame = _frame
+	return _resolve_pending_join()
 
 
-func _is_duplicate_join(device: int, current: InputSnapshot) -> bool:
-	if _last_join_device == DEVICE_NONE or _last_join_device == device:
+func _register_press(device: int, current: InputSnapshot) -> bool:
+	var suspect := DEVICE_NONE
+	if not is_keyboard(device):
+		for other in _recent_presses:
+			if other == device or is_keyboard(other):
+				continue
+			var press: Dictionary = _recent_presses[other]
+			if _frame - int(press["frame"]) > JOIN_DUPLICATE_WINDOW_FRAMES or not current.equals(press["snapshot"]):
+				continue
+			suspect = device
+			if slot_of_device(device) != -1 and slot_of_device(other) == -1:
+				suspect = other
+			break
+	_recent_presses[device] = {"frame": _frame, "snapshot": current.duplicate_snapshot()}
+	if suspect == DEVICE_NONE:
+		_coincidences[device] = 0
 		return false
-	if _frame - _last_join_frame > JOIN_DUPLICATE_WINDOW_FRAMES:
-		return false
-	return current.equals(_last_join_snapshot)
+	_coincidences[suspect] = int(_coincidences.get(suspect, 0)) + 1
+	if _coincidences[suspect] >= MIRROR_CONFIRMATIONS:
+		_mirror_devices[suspect] = true
+	return suspect == device
+
+
+func _resolve_pending_join() -> int:
+	if _pending_join == DEVICE_NONE:
+		return DEVICE_NONE
+	var device := _pending_join
+	if _mirror_devices.has(device) or int(_coincidences.get(device, 0)) > 0 or slot_of_device(device) != -1:
+		_pending_join = DEVICE_NONE
+		return DEVICE_NONE
+	var delay := 0 if is_keyboard(device) else JOIN_DUPLICATE_WINDOW_FRAMES
+	if _frame - _pending_frame < delay:
+		return DEVICE_NONE
+	_pending_join = DEVICE_NONE
+	return device
+
+
+func is_mirror(device: int) -> bool:
+	return _mirror_devices.has(device)
 
 
 func reset_join_tracking() -> void:
 	_previous_by_device.clear()
-	_last_join_device = DEVICE_NONE
-	_last_join_frame = -1000
+	_recent_presses.clear()
+	_coincidences.clear()
+	_mirror_devices.clear()
+	_pending_join = DEVICE_NONE

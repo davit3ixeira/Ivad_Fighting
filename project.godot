@@ -11,13 +11,14 @@ config_version=5
 [application]
 
 config/name="Ivad Fighting"
-run/main_scene="res://scenes/fight.tscn"
+run/main_scene="res://scenes/press_start.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
 
 InputRouter="*res://input/input_router.gd"
 AudioManager="*res://audio/audio_manager.gd"
+GameFlow="*res://flow/game_flow.gd"
 
 [display]
 

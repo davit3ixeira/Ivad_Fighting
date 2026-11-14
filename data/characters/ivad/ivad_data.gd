@@ -73,6 +73,14 @@ static func build() -> CharacterData:
 	c.power_color = Color(0.72, 0.5, 1.0)
 	c.intro_line = "Vamos logo com isso. O universo não se equilibra sozinho."
 	c.win_line = "Nada pessoal. É só gravidade."
+	c.intro_lines_vs = {
+		"oaoj": "Irmãozinho. Tenta não quebrar o palco dessa vez.",
+		"ivad": "Bonito rosto. Pena que é emprestado.",
+	}
+	c.win_lines_vs = {
+		"oaoj": "Conta pra mãe que eu peguei leve.",
+		"ivad": "Só pode existir um. E é o mais bonito.",
+	}
 	c.params = MODULE_PARAMS
 	c.rig = IvadAnims.rig()
 	c.animations = IvadAnims.build()
