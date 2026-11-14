@@ -1,0 +1,38 @@
+[gd_scene load_steps=7 format=3 uid="uid://ivadfight0001"]
+
+[ext_resource type="Script" path="res://scenes/fight.gd" id="1_fight"]
+[ext_resource type="Script" path="res://view/stage_placeholder.gd" id="2_stage"]
+[ext_resource type="Script" path="res://core/fight_sim.gd" id="3_sim"]
+[ext_resource type="Script" path="res://ui/debug_overlay.gd" id="4_debug"]
+[ext_resource type="Script" path="res://core/fight_camera.gd" id="5_camera"]
+[ext_resource type="Script" path="res://ui/fight_hud.gd" id="6_hud"]
+
+[node name="Fight" type="Node2D"]
+script = ExtResource("1_fight")
+
+[node name="Stage" type="Node2D" parent="."]
+script = ExtResource("2_stage")
+
+[node name="Sim" type="Node" parent="."]
+script = ExtResource("3_sim")
+
+[node name="Views" type="Node2D" parent="."]
+
+[node name="Effects" type="Node2D" parent="."]
+
+[node name="DebugOverlay" type="Node2D" parent="."]
+script = ExtResource("4_debug")
+
+[node name="Camera" type="Camera2D" parent="."]
+script = ExtResource("5_camera")
+
+[node name="HudLayer" type="CanvasLayer" parent="."]
+
+[node name="Hud" type="Control" parent="HudLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("6_hud")
