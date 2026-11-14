@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://ivadfight0001"]
+[gd_scene format=3 uid="uid://5gl8elypmaii"]
 
 [ext_resource type="Script" path="res://scenes/fight.gd" id="1_fight"]
 [ext_resource type="Script" path="res://view/stage_placeholder.gd" id="2_stage"]

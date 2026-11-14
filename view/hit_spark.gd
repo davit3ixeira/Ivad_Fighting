@@ -45,6 +45,6 @@ func _draw() -> void:
 		var dir := Vector2(cos(angle), sin(angle))
 		draw_line(dir * inner, dir * (inner + length), color, 3.5 * fade + 1.0)
 	if _blocked:
-		draw_arc(Vector2.ZERO, 14.0 + t * 26.0, 0.0, TAU, 20, color, 2.5)
+		DrawKit.ring(self, Vector2.ZERO, 14.0 + t * 26.0, color, 2.5, 16)
 	elif t < 0.4:
-		draw_circle(Vector2.ZERO, (18.0 - t * 30.0) * _strength, Color(1, 1, 1, fade * 0.8))
+		DrawKit.disc(self, Vector2.ZERO, (18.0 - t * 30.0) * _strength, Color(1, 1, 1, fade * 0.8))

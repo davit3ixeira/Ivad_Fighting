@@ -1,6 +1,8 @@
 class_name InputBuffer
 extends RefCounted
 
+const HISTORY_SIZE := 20
+
 var frame: int = 0
 var raw_x: int = 0
 var raw_y: int = 0
@@ -10,6 +12,7 @@ var up: bool = false
 var down: bool = false
 var held: int = 0
 var dash_request: int = 0
+var direction_history: Array[Vector2i] = []
 
 var _press_frames: Dictionary = {}
 var _consumed: Dictionary = {}
@@ -17,6 +20,12 @@ var _last_tap_dir: int = 0
 var _last_tap_frame: int = -1000
 var _previous_rel_x: int = 0
 var _dash_request_frame: int = -1000
+var _back_charge: int = 0
+var _back_charge_stored: int = 0
+var _back_charge_release_frame: int = -1000
+var _down_charge: int = 0
+var _down_charge_stored: int = 0
+var _down_charge_release_frame: int = -1000
 
 
 func update(snapshot: InputSnapshot, facing: int) -> void:
@@ -34,12 +43,54 @@ func update(snapshot: InputSnapshot, facing: int) -> void:
 		if new_presses & (1 << action):
 			_press_frames[action] = frame
 			_consumed.erase(action)
-	_update_double_tap(rel_x)
+	_update_history(rel_x, snapshot.dir_y)
+	_update_charge()
+	_update_double_tap(rel_x, snapshot.dir_y)
 	if dash_request != 0 and frame - _dash_request_frame > GlobalTuning.INPUT_BUFFER_FRAMES:
 		dash_request = 0
 
 
-func _update_double_tap(rel_x: int) -> void:
+func _update_history(rel_x: int, dir_y: int) -> void:
+	var numpad := 5 + rel_x - dir_y * 3
+	if not direction_history.is_empty() and direction_history[direction_history.size() - 1].x == numpad:
+		return
+	direction_history.append(Vector2i(numpad, frame))
+	if direction_history.size() > HISTORY_SIZE:
+		direction_history.remove_at(0)
+
+
+func _update_charge() -> void:
+	if back:
+		_back_charge += 1
+	elif _back_charge > 0:
+		_back_charge_stored = _back_charge
+		_back_charge_release_frame = frame
+		_back_charge = 0
+	if down:
+		_down_charge += 1
+	elif _down_charge > 0:
+		_down_charge_stored = _down_charge
+		_down_charge_release_frame = frame
+		_down_charge = 0
+
+
+func has_back_charge(frames: int) -> bool:
+	if _back_charge >= frames:
+		return true
+	return _back_charge_stored >= frames and frame - _back_charge_release_frame <= GlobalTuning.COMMAND_TOLERANCE_FRAMES
+
+
+func has_down_charge(frames: int) -> bool:
+	if _down_charge >= frames:
+		return true
+	return _down_charge_stored >= frames and frame - _down_charge_release_frame <= GlobalTuning.COMMAND_TOLERANCE_FRAMES
+
+
+func _update_double_tap(rel_x: int, dir_y: int) -> void:
+	if dir_y != 0:
+		_last_tap_dir = 0
+		_previous_rel_x = 0
+		return
 	if rel_x != 0 and rel_x != _previous_rel_x:
 		if _last_tap_dir == rel_x and frame - _last_tap_frame <= GlobalTuning.DOUBLE_TAP_WINDOW_FRAMES:
 			dash_request = rel_x

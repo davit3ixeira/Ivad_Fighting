@@ -10,11 +10,15 @@ const FLOOR_SCREEN_FRACTION := 0.86
 const POSITION_SMOOTHING := 0.14
 const ZOOM_SMOOTHING := 0.08
 const SHAKE_DECAY := 0.86
+const FOCUS_SMOOTHING := 0.22
 
 var shake_amount: float = 0.0
 var _target_position: Vector2 = Vector2.ZERO
 var _target_zoom: float = 1.0
 var _rng := RandomNumberGenerator.new()
+var _focus_frames: int = 0
+var _focus_point: Vector2 = Vector2.ZERO
+var _focus_zoom: float = 1.0
 
 
 func _ready() -> void:
@@ -31,11 +35,25 @@ func snap_to(fighters: Array[Fighter]) -> void:
 
 func follow(fighters: Array[Fighter]) -> void:
 	_compute_targets(fighters)
-	var z := lerpf(zoom.x, _target_zoom, ZOOM_SMOOTHING)
+	var position_smoothing := POSITION_SMOOTHING
+	var zoom_smoothing := ZOOM_SMOOTHING
+	if _focus_frames > 0:
+		_focus_frames -= 1
+		_target_zoom = _focus_zoom
+		_target_position = _clamp_to_stage(_focus_point, _focus_zoom)
+		position_smoothing = FOCUS_SMOOTHING
+		zoom_smoothing = FOCUS_SMOOTHING
+	var z := lerpf(zoom.x, _target_zoom, zoom_smoothing)
 	zoom = Vector2(z, z)
-	position = position.lerp(_target_position, POSITION_SMOOTHING)
+	position = position.lerp(_target_position, position_smoothing)
 	position = _clamp_to_stage(position, z)
 	_apply_shake()
+
+
+func focus(point: Vector2, zoom_level: float, frames: int) -> void:
+	_focus_point = point
+	_focus_zoom = zoom_level
+	_focus_frames = frames
 
 
 func add_shake(amount: float) -> void:
